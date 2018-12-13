@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Task = System.Threading.Tasks.Task;
+using IServiceProvider = System.IServiceProvider;
+using Microsoft.VisualStudio.ComponentModelHost;
 
 namespace CapstoneVS
 {
@@ -14,20 +16,9 @@ namespace CapstoneVS
     /// </summary>
     internal sealed class CapstoneDisassemblyCommand
     {
-        /// <summary>
-        /// Command ID.
-        /// </summary>
-        public const int CommandId = 0x0100;
+        private Package _package;
 
-        /// <summary>
-        /// Command menu group (command set GUID).
-        /// </summary>
-        public static readonly Guid CommandSet = new Guid("8de8bb9c-2ce2-4472-829b-1a7fe9434098");
-
-        /// <summary>
-        /// VS Package that provides this command, not null.
-        /// </summary>
-        public readonly AsyncPackage package;
+        private IServiceProvider _serviceProvider;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="CapstoneDisassemblyCommand"/> class.
@@ -35,14 +26,26 @@ namespace CapstoneVS
         /// </summary>
         /// <param name="package">Owner package, not null.</param>
         /// <param name="commandService">Command service to add command to, not null.</param>
-        private CapstoneDisassemblyCommand(AsyncPackage package, OleMenuCommandService commandService)
+        private CapstoneDisassemblyCommand(Package package, OleMenuCommandService commandService)
         {
-            this.package = package ?? throw new ArgumentNullException(nameof(package));
-            commandService = commandService ?? throw new ArgumentNullException(nameof(commandService));
+            if (package == null)
+            {
+                throw new ArgumentNullException(nameof(package));
+            }
+            if (commandService == null)
+            {
+                throw new ArgumentNullException(nameof(commandService));
+            }
 
-            var menuCommandID = new CommandID(CommandSet, CommandId);
-            var menuItem = new MenuCommand(this.Execute, menuCommandID);
-            commandService.AddCommand(menuItem);
+            _package = package;
+
+            CommandID menuCommandID = new CommandID(GuidList.guidCapstoneDisassemblyPackageCmdSet, (int)PkgCmdIDList.CapstoneDisassemblyCommandId);
+            MenuCommand menuToolWin = new MenuCommand(Execute, menuCommandID);
+            commandService.AddCommand(menuToolWin);
+
+            var componentModel = package.GetService<SComponentModel, IComponentModel>();
+            var export = componentModel.DefaultExportProvider;
+            _serviceProvider = export.GetExportedValue<SVsServiceProvider>();
         }
 
         /// <summary>
@@ -54,14 +57,11 @@ namespace CapstoneVS
             private set;
         }
 
-        /// <summary>
-        /// Gets the service provider from the owner package.
-        /// </summary>
-        private Microsoft.VisualStudio.Shell.IAsyncServiceProvider ServiceProvider
+        public IServiceProvider ServiceProvider
         {
             get
             {
-                return this.package;
+                return this._package;
             }
         }
 
@@ -69,15 +69,11 @@ namespace CapstoneVS
         /// Initializes the singleton instance of the command.
         /// </summary>
         /// <param name="package">Owner package, not null.</param>
-        public static async Task InitializeAsync(AsyncPackage package)
+        public static void Initialize(Package package)
         {
-            // Verify the current thread is the UI thread - the call to AddCommand in CapstoneDisassemblyCommand's constructor requires
-            // the UI thread.
-#pragma warning disable VSTHRD109 // Switch instead of assert in async methods
             ThreadHelper.ThrowIfNotOnUIThread();
-#pragma warning restore VSTHRD109 // Switch instead of assert in async methods
 
-            OleMenuCommandService commandService = await package.GetServiceAsync((typeof(IMenuCommandService))) as OleMenuCommandService;
+            OleMenuCommandService commandService = package.GetService<IMenuCommandService, OleMenuCommandService>();
             Instance = new CapstoneDisassemblyCommand(package, commandService);
         }
 
@@ -93,11 +89,13 @@ namespace CapstoneVS
             // Get the instance number 0 of this tool window. This window is single instance so this instance
             // is actually the only one.
             // The last flag is set to true so that if the tool window does not exists it will be created.
-            ToolWindowPane window = this.package.FindToolWindow(typeof(CapstoneDisassembly), 0, true);
+            CapstoneDisassembly window = (CapstoneDisassembly)this._package.FindToolWindow(typeof(CapstoneDisassembly), 0, true);
             if ((null == window) || (null == window.Frame))
             {
                 throw new NotSupportedException("Cannot create tool window");
             }
+
+            window.ResetDisplay(_serviceProvider.GetOleServiceProvider());
 
             IVsWindowFrame windowFrame = (IVsWindowFrame)window.Frame;
             Microsoft.VisualStudio.ErrorHandler.ThrowOnFailure(windowFrame.Show());
