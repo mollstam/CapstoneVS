@@ -12,6 +12,12 @@
     {
         //private CapstoneDisassemblyTextView _textView;
 
+        public Control TextViewControl
+        {
+            get { return (Control)_hostControl.Content; }
+            set { _hostControl.Content = value; }
+        }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="CapstoneDisassemblyControl"/> class.
         /// </summary>
@@ -25,6 +31,7 @@
 
         internal void ShowDisassembly()
         {
+            throw new NotImplementedException();
             //this._textView.ShowDisassembly();
         }
     }

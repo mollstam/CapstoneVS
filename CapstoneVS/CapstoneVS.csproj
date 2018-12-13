@@ -64,8 +64,10 @@
     <Compile Include="CapstoneDisassemblyTextView.xaml.cs">
       <DependentUpon>CapstoneDisassemblyTextView.xaml</DependentUpon>
     </Compile>
+    <Compile Include="EditorFactory.cs" />
     <Compile Include="ExtensionMethods.cs" />
     <Compile Include="Guids.cs" />
+    <Compile Include="IEditorFactory.cs" />
     <Compile Include="PkgCmdIDList.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ToolWindowWithEditor.cs" />

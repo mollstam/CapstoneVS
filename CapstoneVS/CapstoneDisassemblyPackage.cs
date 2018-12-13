@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel.Composition;
 using System.ComponentModel.Design;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -42,7 +43,6 @@ namespace CapstoneVS
     public sealed class CapstoneDisassemblyPackage : Package
     {
 
-
         /// <summary>
         /// Initializes a new instance of the <see cref="CapstoneDisassembly"/> class.
         /// </summary>
@@ -62,6 +62,8 @@ namespace CapstoneVS
         /// </summary>
         protected override void Initialize()
         {
+            base.Initialize();
+
             ThreadHelper.ThrowIfNotOnUIThread();
             CapstoneDisassemblyCommand.Initialize(this);
         }

@@ -2,7 +2,10 @@
 {
     using System;
     using System.Runtime.InteropServices;
+    using Microsoft.VisualStudio.Editor;
     using Microsoft.VisualStudio.Shell;
+    using Microsoft.VisualStudio.Text.Editor;
+    using Microsoft.VisualStudio.TextManager.Interop;
     using IOleServiceProvider = Microsoft.VisualStudio.OLE.Interop.IServiceProvider;
 
 
@@ -41,7 +44,28 @@
 
         internal void ResetDisplay(IOleServiceProvider oleServiceProvider)
         {
+            var serviceProvider = oleServiceProvider.GetServiceProvider();
+            var vsEditorAdaptersFactoryService = serviceProvider.GetExportedValue<IVsEditorAdaptersFactoryService>();
+            var editorFactory = serviceProvider.GetExportedValue<IEditorFactory>();
 
+            var vsTextBuffer = vsEditorAdaptersFactoryService.CreateVsTextBufferAdapter(oleServiceProvider);
+
+            var contentTypeKey = new Guid(0x1beb4195, 0x98f4, 0x4589, 0x80, 0xe0, 0x48, 12, 0xe3, 0x2f, 240, 0x59);
+            var vsUserData = (IVsUserData)vsTextBuffer;
+            vsUserData.SetData(ref contentTypeKey, "text");
+
+            vsTextBuffer.InitializeContent("", 0);
+            var textBuffer = vsEditorAdaptersFactoryService.GetDataBuffer(vsTextBuffer);
+
+            var vsTextView = editorFactory.CreateVsTextView(
+                vsTextBuffer,
+                PredefinedTextViewRoles.Interactive,
+                PredefinedTextViewRoles.Editable,
+                PredefinedTextViewRoles.Document,
+                PredefinedTextViewRoles.PrimaryDocument);
+
+            var wpfTextViewHost = vsEditorAdaptersFactoryService.GetWpfTextViewHost(vsTextView);
+            _disassemblyControl.TextViewControl = wpfTextViewHost.HostControl;
         }
     }
 }

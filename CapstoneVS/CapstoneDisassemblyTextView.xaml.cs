@@ -24,30 +24,30 @@ namespace CapstoneVS
     /// </summary>
     public partial class CapstoneDisassemblyTextView : UserControl
     {
-        private ToolWindowWithEditor<CapstoneDisassemblyTextView> toolWindow;
-        private IVsTextView textView;
+        private ToolWindowWithEditor<CapstoneDisassemblyTextView> _toolWindow;
+        private IVsTextView _vsTextView;
 
         public CapstoneDisassemblyTextView()
         {
             InitializeComponent();
 
-            toolWindow = new ToolWindowWithEditor<CapstoneDisassemblyTextView>();
+            _toolWindow = new ToolWindowWithEditor<CapstoneDisassemblyTextView>();
         }
 
         private void ClearEditor()
         {
-            toolWindow.ClearEditor();
+            _toolWindow.ClearEditor();
 
             this.DisassemblyEditor.Content = null;
         }
 
         public void ShowDisassembly()
         {
-            var tuple = this.toolWindow.SetDisplayedDisassembly();
+            var tuple = this._toolWindow.SetDisplayedDisassembly();
             if (tuple != null)
             {
                 this.DisassemblyEditor = (System.Windows.Controls.ContentControl)tuple.Item1;
-                this.textView = tuple.Item2;
+                this._vsTextView = tuple.Item2;
             }
         }
     }

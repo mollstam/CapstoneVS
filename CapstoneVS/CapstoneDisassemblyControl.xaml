@@ -10,6 +10,6 @@
              d:DesignHeight="300" d:DesignWidth="300"
              Name="MyToolWindow">
     <Border>
-        <ContentControl x:Name="DisassemblyTextView"></ContentControl>
+        <UserControl x:Name="_hostControl"></UserControl>
     </Border>
 </UserControl>
