@@ -8,6 +8,7 @@ using Microsoft.VisualStudio.Shell.Interop;
 using Task = System.Threading.Tasks.Task;
 using IServiceProvider = System.IServiceProvider;
 using Microsoft.VisualStudio.ComponentModelHost;
+using IOleServiceProvider = Microsoft.VisualStudio.OLE.Interop.IServiceProvider;
 
 namespace CapstoneVS
 {
@@ -65,6 +66,14 @@ namespace CapstoneVS
             }
         }
 
+        public IOleServiceProvider OleServiceProvider
+        {
+            get
+            {
+                return this._serviceProvider.GetOleServiceProvider();
+            }
+        }
+
         /// <summary>
         /// Initializes the singleton instance of the command.
         /// </summary>
@@ -90,12 +99,12 @@ namespace CapstoneVS
             // is actually the only one.
             // The last flag is set to true so that if the tool window does not exists it will be created.
             CapstoneDisassembly window = (CapstoneDisassembly)this._package.FindToolWindow(typeof(CapstoneDisassembly), 0, true);
-            if ((null == window) || (null == window.Frame))
+            if (window == null || window.Frame == null)
             {
                 throw new NotSupportedException("Cannot create tool window");
             }
 
-            window.ResetDisplay(_serviceProvider.GetOleServiceProvider());
+            window.RefreshDisplay(OleServiceProvider);
 
             IVsWindowFrame windowFrame = (IVsWindowFrame)window.Frame;
             Microsoft.VisualStudio.ErrorHandler.ThrowOnFailure(windowFrame.Show());

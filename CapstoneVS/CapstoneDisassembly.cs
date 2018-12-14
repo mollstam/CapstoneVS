@@ -42,7 +42,14 @@
             //_debugListener = new CapstoneDisassemblyDebugListener(_disassemblyControl);
         }
 
-        internal void ResetDisplay(IOleServiceProvider oleServiceProvider)
+        public override void OnToolWindowCreated()
+        {
+            base.OnToolWindowCreated();
+
+            RefreshDisplay(CapstoneDisassemblyCommand.Instance.OleServiceProvider);
+        }
+
+        internal void RefreshDisplay(IOleServiceProvider oleServiceProvider)
         {
             var serviceProvider = oleServiceProvider.GetServiceProvider();
             var vsEditorAdaptersFactoryService = serviceProvider.GetExportedValue<IVsEditorAdaptersFactoryService>();
@@ -54,13 +61,15 @@
             var vsUserData = (IVsUserData)vsTextBuffer;
             vsUserData.SetData(ref contentTypeKey, "text");
 
-            vsTextBuffer.InitializeContent("", 0);
+            string content = "this is some initial content\nfoo\nbar";
+            vsTextBuffer.InitializeContent(content, content.Length);
+            vsTextBuffer.SetStateFlags((uint)BUFFERSTATEFLAGS.BSF_USER_READONLY);
+
             var textBuffer = vsEditorAdaptersFactoryService.GetDataBuffer(vsTextBuffer);
 
             var vsTextView = editorFactory.CreateVsTextView(
                 vsTextBuffer,
                 PredefinedTextViewRoles.Interactive,
-                PredefinedTextViewRoles.Editable,
                 PredefinedTextViewRoles.Document,
                 PredefinedTextViewRoles.PrimaryDocument);
 
