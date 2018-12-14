@@ -1,6 +1,7 @@
 ﻿namespace CapstoneVS
 {
     using System;
+    using System.Collections.Generic;
     using System.Runtime.InteropServices;
     using Microsoft.VisualStudio.Editor;
     using Microsoft.VisualStudio.Shell;
@@ -23,7 +24,7 @@
     [Guid("4c7ad2ba-eaad-4abd-bf04-974462f52aef")]
     public class CapstoneDisassembly : ToolWindowPane
     {
-        //CapstoneDisassemblyDebugListener _debugListener;
+        CapstoneDisassemblyDebugListener _debugListener;
         CapstoneDisassemblyControl _disassemblyControl;
 
         /// <summary>
@@ -39,7 +40,13 @@
             _disassemblyControl = new CapstoneDisassemblyControl();
             this.Content = _disassemblyControl;
 
-            //_debugListener = new CapstoneDisassemblyDebugListener(_disassemblyControl);
+            _debugListener = new CapstoneDisassemblyDebugListener();
+            _debugListener.OnBreakEvent += OnDebugBreak;
+        }
+
+        private void OnDebugBreak()
+        {
+            RefreshDisplay(CapstoneDisassemblyCommand.Instance.OleServiceProvider);
         }
 
         public override void OnToolWindowCreated()
@@ -61,7 +68,7 @@
             var vsUserData = (IVsUserData)vsTextBuffer;
             vsUserData.SetData(ref contentTypeKey, "text");
 
-            string content = "this is some initial content\nfoo\nbar";
+            string content = GenerateContent();
             vsTextBuffer.InitializeContent(content, content.Length);
             vsTextBuffer.SetStateFlags((uint)BUFFERSTATEFLAGS.BSF_USER_READONLY);
 
@@ -75,6 +82,20 @@
 
             var wpfTextViewHost = vsEditorAdaptersFactoryService.GetWpfTextViewHost(vsTextView);
             _disassemblyControl.TextViewControl = wpfTextViewHost.HostControl;
+        }
+
+        internal string GenerateContent()
+        {
+            var lines = new List<string>();
+
+            var random = new Random();
+            int offset = random.Next(0, 1000);
+            for (int i = 0; i < 100; ++i)
+            {
+                lines.Add("line " + (offset + i));
+            }
+
+            return String.Join("\n", lines);
         }
     }
 }

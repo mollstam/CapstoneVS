@@ -13,14 +13,15 @@ namespace CapstoneVS
 {
     class CapstoneDisassemblyDebugListener : IVsDebuggerEvents, IDebugEventCallback2
     {
+        public delegate void OnBreak();
+
+        public event OnBreak OnBreakEvent;
 
         readonly uint _debuggerEventsCookie;
-        //CapstoneDisassemblyControl _disassemblyControl;
 
         public CapstoneDisassemblyDebugListener(/*CapstoneDisassemblyControl disassemblyControl*/)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            //this._disassemblyControl = disassemblyControl;
             IVsDebugger debugger = CapstoneDisassemblyCommand.Instance.ServiceProvider.GetService(typeof(SVsShellDebugger)) as IVsDebugger;
             Assumes.Present(debugger);
 
@@ -39,7 +40,7 @@ namespace CapstoneVS
         {
             if (dbgmodeNew == DBGMODE.DBGMODE_Break)
             {
-                //this._disassemblyControl.ShowDisassembly();
+                OnBreakEvent?.Invoke();
             }
 
             return VSConstants.S_OK;
