@@ -3,8 +3,15 @@
     using System;
     using System.Collections.Generic;
     using System.Runtime.InteropServices;
+    using System.Threading;
+    using EnvDTE90a;
+    using Microsoft.VisualStudio;
+    using Microsoft.VisualStudio.Debugger.CallStack;
+    using Microsoft.VisualStudio.Debugger.Interop;
+    using Microsoft.VisualStudio.Debugger.Interop.Internal;
     using Microsoft.VisualStudio.Editor;
     using Microsoft.VisualStudio.Shell;
+    using Microsoft.VisualStudio.Shell.Interop;
     using Microsoft.VisualStudio.Text.Editor;
     using Microsoft.VisualStudio.TextManager.Interop;
     using IOleServiceProvider = Microsoft.VisualStudio.OLE.Interop.IServiceProvider;
@@ -41,7 +48,13 @@
             this.Content = _disassemblyControl;
 
             _debugListener = new CapstoneDisassemblyDebugListener();
-            _debugListener.OnBreakEvent += OnDebugBreak;
+            _debugListener.OnBreak += OnDebugBreak;
+            _debugListener.OnDebugEnd += OnDebugEnd;
+        }
+
+        private void OnDebugEnd()
+        {
+            RefreshDisplay(CapstoneDisassemblyCommand.Instance.OleServiceProvider);
         }
 
         private void OnDebugBreak()
@@ -58,6 +71,7 @@
 
         internal void RefreshDisplay(IOleServiceProvider oleServiceProvider)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
             var serviceProvider = oleServiceProvider.GetServiceProvider();
             var vsEditorAdaptersFactoryService = serviceProvider.GetExportedValue<IVsEditorAdaptersFactoryService>();
             var editorFactory = serviceProvider.GetExportedValue<IEditorFactory>();
@@ -86,16 +100,102 @@
 
         internal string GenerateContent()
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (HasCurrentStackFrame() == false)
+            {
+                return "No program in being debugged";
+            }
+            ulong instructionPointer;
+            
+            if (GetCurrentInstructionPointer(out instructionPointer) == false)
+            {
+                return "Error: Unable to get instruction pointer from current stack frame";
+            }
+
             var lines = new List<string>();
 
-            var random = new Random();
-            int offset = random.Next(0, 1000);
-            for (int i = 0; i < 100; ++i)
+            ulong currentAddress = instructionPointer;
+            for (int i = 0; i < 5; ++i)
             {
-                lines.Add("line " + (offset + i));
+                lines.Add(String.Format("{0:X8}", currentAddress) + "\t\thello!");
+                currentAddress += 4;
             }
 
             return String.Join("\n", lines);
+        }
+
+        private bool HasCurrentStackFrame()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            EnvDTE.DTE dte = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(SDTE)) as EnvDTE.DTE;
+            if (dte == null || dte.Debugger.CurrentStackFrame == null)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool GetCurrentInstructionPointer(out ulong ptr)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            ptr = 0;
+
+            EnvDTE.DTE dte = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(SDTE)) as EnvDTE.DTE;
+
+            var dkmStackFrame = DkmStackFrame.ExtractFromDTEObject(dte.Debugger.CurrentStackFrame);
+            if (dkmStackFrame != null)
+            {
+                // Concord frame
+                var registers = dkmStackFrame.Registers;
+                if (registers == null)
+                {
+                    return false;
+                }
+                ptr = registers.GetInstructionPointer();
+                return true;
+            }
+
+            // Ehm...
+
+            StackFrame2 currentFrame2 = dte.Debugger.CurrentStackFrame as StackFrame2;
+            if (currentFrame2 != null)
+            {
+
+                IVsDebugger debugService = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(SVsShellDebugger)) as IVsDebugger;
+                IDebuggerInternal11 debuggerServiceInternal = (IDebuggerInternal11)debugService;
+                IDebugThread2 debugThread = debuggerServiceInternal.CurrentThread;
+
+                if (debugThread.EnumFrameInfo(
+                        enum_FRAMEINFO_FLAGS.FIF_FRAME,
+                        0, out IEnumDebugFrameInfo2 enumDebugFrameInfo2
+                    ) == VSConstants.S_OK)
+                {
+                    enumDebugFrameInfo2.Reset();
+                    if (enumDebugFrameInfo2.Skip(currentFrame2.Depth - 1) == VSConstants.S_OK)
+                    {
+                        FRAMEINFO[] frameInfo = new FRAMEINFO[1];
+                        uint fetched = 0;
+                        int hr = enumDebugFrameInfo2.Next(1, frameInfo, ref fetched);
+                        if (hr == VSConstants.S_OK && fetched == 1)
+                        {
+                            IDebugStackFrame2 stackFrame = frameInfo[0].m_pFrame;
+                            if (stackFrame.GetCodeContext(out IDebugCodeContext2 codeContext) == VSConstants.S_OK)
+                            {
+                                CONTEXT_INFO[] contextInfo = new CONTEXT_INFO[1];
+                                if (codeContext.GetInfo(enum_CONTEXT_INFO_FIELDS.CIF_ADDRESS, contextInfo) == VSConstants.S_OK)
+                                {
+                                    ptr = Convert.ToUInt64(contextInfo[0].bstrAddress, 16);
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
     }
 }
