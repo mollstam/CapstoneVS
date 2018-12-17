@@ -15,6 +15,7 @@
     using Microsoft.VisualStudio.Text.Editor;
     using Microsoft.VisualStudio.TextManager.Interop;
     using IOleServiceProvider = Microsoft.VisualStudio.OLE.Interop.IServiceProvider;
+    using Gee.External.Capstone;
 
 
     /// <summary>
@@ -34,6 +35,9 @@
         CapstoneDisassemblyDebugListener _debugListener;
         CapstoneDisassemblyControl _disassemblyControl;
 
+        // TODO config
+        public static CapstoneDisassembler<Gee.External.Capstone.Arm64.Arm64Instruction, Gee.External.Capstone.Arm64.Arm64Register, Gee.External.Capstone.Arm64.Arm64InstructionGroup, Gee.External.Capstone.Arm64.Arm64InstructionDetail> _disassembler;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="CapstoneDisassembly"/> class.
         /// </summary>
@@ -50,6 +54,11 @@
             _debugListener = new CapstoneDisassemblyDebugListener();
             _debugListener.OnBreak += OnDebugBreak;
             _debugListener.OnDebugEnd += OnDebugEnd;
+
+            // TODO config
+            _disassembler = CapstoneDisassembler.CreateArm64Disassembler(Gee.External.Capstone.DisassembleMode.Arm32);
+            _disassembler.EnableDetails = true;
+            _disassembler.Syntax = Gee.External.Capstone.DisassembleSyntaxOptionValue.Intel;
         }
 
         private void OnDebugEnd()
@@ -103,7 +112,7 @@
             ThreadHelper.ThrowIfNotOnUIThread();
             if (HasCurrentStackFrame() == false)
             {
-                return "No program in being debugged";
+                return "No program is being debugged";
             }
             ulong instructionPointer;
             
@@ -121,7 +130,8 @@
             var lines = new List<string>();
 
             ulong currentAddress = instructionPointer;
-            for (int i = 0; i < 5; ++i)
+            const int numInstructions = 15;
+            for (int i = 0; i < numInstructions; ++i)
             {
                 string bytesString = "";
                 string instructionString = "";
@@ -133,7 +143,7 @@
                 else
                 {
                     bytesString = BitConverter.ToString(bytes).Replace("-", "");
-                    GetDisassembledInstruction(bytes, out instructionString);
+                    GetDisassembledInstruction(bytes, out instructionString, currentAddress);
                 }
                 // TODO length 4 of bytes hex string should be config
                 lines.Add(String.Format("0x{0:X8}:   {1:X4}\t\t{2}", currentAddress, bytesString, instructionString));
@@ -225,10 +235,30 @@
             return ReadDebugeeMemory(expr, ref bytes, length, frame);
         }
 
-        private bool GetDisassembledInstruction(byte[] bytes, out string instructionString)
+        private bool GetDisassembledInstruction(byte[] bytes, out string instructionString, ulong startingAddress)
         {
-            instructionString = String.Format("NYI disasm of {0}", BitConverter.ToString(bytes).Replace("-", ""));
-            return false;
+            instructionString = "";
+
+            // TODO config
+            const int length = 4;
+            try
+            {
+                var instructions = _disassembler.Disassemble(bytes, length, (long)startingAddress);
+                if (instructions.Length != 1)
+                {
+                    // expected 1 instruction to be disassemble (quite TEMP)
+                    instructionString = "- Error -";
+                    return false;
+                }
+
+                instructionString = String.Format("{0,-10} {1}", instructions[0].Mnemonic, instructions[0].Operand);
+                return true;
+            }
+            catch
+            {
+                instructionString = "- Error -";
+                return false;
+            }
         }
 
         private bool ReadDebugeeMemory(string expr, ref byte[] buffer, uint length, IDebugStackFrame2 frame)
