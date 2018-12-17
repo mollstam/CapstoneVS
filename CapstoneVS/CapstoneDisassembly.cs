@@ -112,12 +112,31 @@
                 return "Error: Unable to get instruction pointer from current stack frame";
             }
 
+            IDebugStackFrame2 frame;
+            if (GetStackFrame(out frame) == false)
+            {
+                return "Unable to read current stack frame";
+            }
+
             var lines = new List<string>();
 
             ulong currentAddress = instructionPointer;
             for (int i = 0; i < 5; ++i)
             {
-                lines.Add(String.Format("{0:X8}", currentAddress) + "\t\thello!");
+                string bytesString = "";
+                string instructionString = "";
+                if (GetInstructionBytesAtAddress(currentAddress, out byte[] bytes, frame) == false)
+                {
+                    bytesString = "- ERROR -";
+                    instructionString = "- ERROR -";
+                }
+                else
+                {
+                    bytesString = BitConverter.ToString(bytes).Replace("-", "");
+                    GetDisassembledInstruction(bytes, out instructionString);
+                }
+                // TODO length 4 of bytes hex string should be config
+                lines.Add(String.Format("0x{0:X8}:   {1:X4}\t\t{2}", currentAddress, bytesString, instructionString));
                 currentAddress += 4;
             }
 
@@ -142,25 +161,31 @@
 
             ptr = 0;
 
-            EnvDTE.DTE dte = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(SDTE)) as EnvDTE.DTE;
-
-            var dkmStackFrame = DkmStackFrame.ExtractFromDTEObject(dte.Debugger.CurrentStackFrame);
-            if (dkmStackFrame != null)
+            IDebugStackFrame2 stackFrame;
+            if (GetStackFrame(out stackFrame))
             {
-                // Concord frame
-                var registers = dkmStackFrame.Registers;
-                if (registers == null)
+                if (stackFrame.GetCodeContext(out IDebugCodeContext2 codeContext) == VSConstants.S_OK)
                 {
-                    return false;
+                    CONTEXT_INFO[] contextInfo = new CONTEXT_INFO[1];
+                    if (codeContext.GetInfo(enum_CONTEXT_INFO_FIELDS.CIF_ADDRESS, contextInfo) == VSConstants.S_OK)
+                    {
+                        ptr = Convert.ToUInt64(contextInfo[0].bstrAddress, 16);
+                        return true;
+                    }
                 }
-                ptr = registers.GetInstructionPointer();
-                return true;
             }
 
-            // Ehm...
+            return false;
+        }
 
-            StackFrame2 currentFrame2 = dte.Debugger.CurrentStackFrame as StackFrame2;
-            if (currentFrame2 != null)
+        private bool GetStackFrame(out IDebugStackFrame2 stackFrame)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            stackFrame = null;
+
+            EnvDTE.DTE dte = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(SDTE)) as EnvDTE.DTE;
+            if (dte.Debugger.CurrentStackFrame is StackFrame2 currentFrame2)
             {
 
                 IVsDebugger debugService = Microsoft.VisualStudio.Shell.Package.GetGlobalService(typeof(SVsShellDebugger)) as IVsDebugger;
@@ -180,22 +205,82 @@
                         int hr = enumDebugFrameInfo2.Next(1, frameInfo, ref fetched);
                         if (hr == VSConstants.S_OK && fetched == 1)
                         {
-                            IDebugStackFrame2 stackFrame = frameInfo[0].m_pFrame;
-                            if (stackFrame.GetCodeContext(out IDebugCodeContext2 codeContext) == VSConstants.S_OK)
-                            {
-                                CONTEXT_INFO[] contextInfo = new CONTEXT_INFO[1];
-                                if (codeContext.GetInfo(enum_CONTEXT_INFO_FIELDS.CIF_ADDRESS, contextInfo) == VSConstants.S_OK)
-                                {
-                                    ptr = Convert.ToUInt64(contextInfo[0].bstrAddress, 16);
-                                    return true;
-                                }
-                            }
+                            stackFrame = frameInfo[0].m_pFrame;
+                            return true;
                         }
                     }
                 }
             }
 
             return false;
+        }
+
+        private bool GetInstructionBytesAtAddress(ulong address, out byte[] bytes, IDebugStackFrame2 frame)
+        {
+            // TODO length 4 of memory read should be config
+            const uint length = 4;
+            bytes = new byte[length];
+            string expr = String.Format("0x{0:X8}", address);
+
+            return ReadDebugeeMemory(expr, ref bytes, length, frame);
+        }
+
+        private bool GetDisassembledInstruction(byte[] bytes, out string instructionString)
+        {
+            instructionString = String.Format("NYI disasm of {0}", BitConverter.ToString(bytes).Replace("-", ""));
+            return false;
+        }
+
+        private bool ReadDebugeeMemory(string expr, ref byte[] buffer, uint length, IDebugStackFrame2 frame)
+        {
+            if (frame.GetExpressionContext(out IDebugExpressionContext2 expressionContext) != VSConstants.S_OK)
+            {
+                // failed to get expression context
+                return false;
+            }
+
+            if (expressionContext.ParseText(
+                    expr,
+                    enum_PARSEFLAGS.PARSE_EXPRESSION,
+                    10,
+                    out IDebugExpression2 expression,
+                    out string parseError,
+                    out uint parseErrorCharIndex) != VSConstants.S_OK)
+            {
+                // failed to parse expression
+                return false;
+            }
+
+            if (expression.EvaluateSync(
+                    enum_EVALFLAGS.EVAL_NOSIDEEFFECTS,
+                    unchecked((uint)Timeout.Infinite),
+                    null,
+                    out IDebugProperty2 debugProperty) != VSConstants.S_OK)
+            {
+                // failed to execute parsed expression
+                return false;
+            }
+
+            if (debugProperty.GetMemoryContext(out IDebugMemoryContext2 memoryContext) != VSConstants.S_OK)
+            {
+                // failed to get memory context
+                return false;
+            }
+
+            if (debugProperty.GetMemoryBytes(out IDebugMemoryBytes2 memoryBytes) != VSConstants.S_OK)
+            {
+                // failed to get memory bytes
+                return false;
+            }
+
+            uint unreadable = 0;
+            if (memoryBytes.ReadAt(memoryContext, length, buffer, out uint writtenBytes, ref unreadable) != VSConstants.S_OK)
+            {
+                // read failed
+                return false;
+            }
+
+            return true;
         }
     }
 }
